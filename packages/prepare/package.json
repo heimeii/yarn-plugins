@@ -1,0 +1,7 @@
+{
+    "name": "yarn-plugin-prepare",
+    "scripts": {
+        "dev": "yarn build --no-minify",
+        "build": "node ../../scripts/builder build plugin"
+    }
+}

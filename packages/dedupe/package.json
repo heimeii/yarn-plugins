@@ -1,0 +1,13 @@
+{
+    "name": "yarn-plugin-dedupe",
+    "scripts": {
+        "dev": "yarn build --no-minify",
+        "build": "node ../../scripts/builder build plugin"
+    },
+    "dependencies": {
+        "micromatch": "^4.0.5"
+    },
+    "devDependencies": {
+        "@types/micromatch": "^4.0.2"
+    }
+}
