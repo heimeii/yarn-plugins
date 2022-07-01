@@ -1,8 +1,7 @@
-import child_process from 'child_process';
-import { Configuration, MessageName, Project, StreamReport } from '@yarnpkg/core';
+import { Cache, Configuration, InstallMode, Project, StreamReport } from '@yarnpkg/core';
 import { BaseCommand } from '@yarnpkg/cli';
 import { Command, Option } from 'clipanion';
-import micromatch from 'micromatch';
+import { dedupe, Strategy } from '../utils';
 
 export default class DedupeCommand extends BaseCommand {
     static paths = [
@@ -35,52 +34,43 @@ export default class DedupeCommand extends BaseCommand {
     patterns = Option.Rest();
 
     async execute() {
-        let dedupeResultStr = '';
-        try {
-            dedupeResultStr = child_process.execSync(`yarn dedupe --mode=update-lockfile --json ${this.check ? '--check' : ''} ${this.patterns.join(' ')}`, { stdio: 'pipe' }).toString();
-        } catch (error) {
-            dedupeResultStr = error.stdout.toString();
-        }
-        const dedupeResult = dedupeResultStr.split('\n').map(item => item ? JSON.parse(item) : item).filter(item => !!item);
-
         const configuration = await Configuration.find(this.context.cwd, this.context.plugins);
         const { project } = await Project.find(configuration, this.context.cwd);
+        const cache = await Cache.find(configuration);
 
-        await project.restoreInstallState();
+        await project.restoreInstallState({
+            restoreResolutions: false,
+        });
 
-        const report = await StreamReport.start(
-            { configuration, stdout: this.context.stdout },
-            async (report) => {
-                const versionMap = new Map<string, string[]>();
-                const packages = Array.from(project.originalPackages.values()).filter(item => item.reference.match(/^npm:/));
-                packages.forEach(item => {
-                    const packageName = `${item.scope ? `@${item.scope}/` : ''}${item.name}`;
-                    const arr = versionMap.get(packageName) || [];
-                    arr.push(item.version);
-                    versionMap.set(packageName, arr);
-                });
+        let resolvedDedupedCount: number = 0;
+        let unresolvedDedupedCount: number = 0;
+        const dedupeReport = await StreamReport.start({
+            configuration,
+            includeFooter: false,
+            stdout: this.context.stdout,
+        }, async report => {
+            const result = await dedupe(project, { strategy: Strategy.HIGHEST, patterns: this.patterns, cache, report });
+            resolvedDedupedCount = result.resolved;
+            unresolvedDedupedCount = result.unresolved;
+        });
 
-                const unresolved: [string, string[]][] = [];
-                versionMap.forEach((v, k) => {
-                    if (v.length > 1) {
-                        if (!this.patterns.length || micromatch.isMatch(k, this.patterns)) {
-                            unresolved.push([k, v]);
-                        }
-                    }
-                });
+        if (dedupeReport.hasErrors())
+            return dedupeReport.exitCode();
 
-                report.startTimerSync(`${this.check ? 'Partial Resolvable' : 'Resolvable'} DedupeData:`, () => {
-                    dedupeResult.forEach(item => report.reportInfo(MessageName.UNNAMED, `descriptor<${item.descriptor}>, currentResolution<${item.currentResolution}>, updatedResolution<${item.updatedResolution}>`));
-                });
-                report.startTimerSync('Unresolved DedupeData:', () => {
-                    unresolved.forEach(item => report.reportInfo(MessageName.UNNAMED, `Package<${item[0]}>, versions: [${item[1]}]`));
-                });
-                if (unresolved.length || (this.check && dedupeResult.length)) {
-                    report.reportError(MessageName.UNNAMED, '-------dedupe check fail--------');
-                }
-            },
-        );
+        if (!this.check && resolvedDedupedCount > 0) {
+            const installReport = await StreamReport.start({
+                configuration,
+                stdout: this.context.stdout,
+            }, async report => {
+                await project.install({ cache, report, mode: InstallMode.UpdateLockfile });
+            });
 
-        return report.exitCode();
+            if (installReport.hasErrors()) {
+                return installReport.exitCode();
+            }
+            resolvedDedupedCount = 0;
+        }
+
+        return resolvedDedupedCount + unresolvedDedupedCount ? 1 : 0;
     }
 }
