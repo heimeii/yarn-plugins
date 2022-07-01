@@ -52,7 +52,7 @@ export default class DedupeCommand extends BaseCommand {
             { configuration, stdout: this.context.stdout },
             async (report) => {
                 const versionMap = new Map<string, string[]>();
-                const packages = Array.from(project.originalPackages.values()).filter(item => !item.reference.match(/^virtual:/));
+                const packages = Array.from(project.originalPackages.values()).filter(item => item.reference.match(/^npm:/));
                 packages.forEach(item => {
                     const packageName = `${item.scope ? `@${item.scope}/` : ''}${item.name}`;
                     const arr = versionMap.get(packageName) || [];
