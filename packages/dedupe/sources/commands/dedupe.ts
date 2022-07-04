@@ -1,4 +1,4 @@
-import { Cache, Configuration, InstallMode, Project, StreamReport } from '@yarnpkg/core';
+import { Cache, Configuration, InstallMode, MessageName, Project, StreamReport } from '@yarnpkg/core';
 import { BaseCommand } from '@yarnpkg/cli';
 import { Command, Option } from 'clipanion';
 import { dedupe, Strategy } from '../utils';
@@ -54,8 +54,9 @@ export default class DedupeCommand extends BaseCommand {
             unresolvedDedupedCount = result.unresolved;
         });
 
-        if (dedupeReport.hasErrors())
+        if (dedupeReport.hasErrors()) {
             return dedupeReport.exitCode();
+        }
 
         if (!this.check && resolvedDedupedCount > 0) {
             const installReport = await StreamReport.start({
@@ -71,6 +72,10 @@ export default class DedupeCommand extends BaseCommand {
             resolvedDedupedCount = 0;
         }
 
-        return resolvedDedupedCount + unresolvedDedupedCount ? 1 : 0;
+        if (resolvedDedupedCount + unresolvedDedupedCount ? 1 : 0) {
+            dedupeReport.reportError(MessageName.UNNAMED, 'validate dedupe fail');
+        }
+
+        return dedupeReport.exitCode();
     }
 }

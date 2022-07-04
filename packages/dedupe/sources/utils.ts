@@ -151,9 +151,6 @@ export async function dedupe(project: Project, { strategy, patterns, cache, repo
         const algorithm = DEDUPE_ALGORITHMS[strategy];
         const { resolvedDedupe, unresolvedDedupe } = await algorithm(project, patterns, { resolver, resolveOptions, fetcher, fetchOptions });
 
-        const progress = Report.progressViaCounter(resolvedDedupe.length);
-        report.reportProgress(progress);
-
         let resolvedDedupedCount = 0;
         report.startTimerSync('Resolved Packages:', () => {
             resolvedDedupe.forEach(dedupe => {
@@ -167,11 +164,6 @@ export async function dedupe(project: Project, { strategy, patterns, cache, repo
                     } to ${structUtils.prettyLocator(configuration, updatedPackage)
                     }`,
                 );
-                report.reportJson({
-                    descriptor: structUtils.stringifyDescriptor(descriptor),
-                    currentResolution: structUtils.stringifyLocator(currentPackage),
-                    updatedResolution: structUtils.stringifyLocator(updatedPackage),
-                });
                 project.storedResolutions.set(descriptor.descriptorHash, updatedPackage.locatorHash);
             });
         });
@@ -193,7 +185,7 @@ export async function dedupe(project: Project, { strategy, patterns, cache, repo
                     `Package<${packageName}>, versions: ${Object.values(versions).map(item => item.join(',')).join(' | ')}`,
                 );
             });
-        })
+        });
 
         const prettyStrategy = formatUtils.pretty(configuration, strategy, formatUtils.Type.CODE);
         report.reportInfo(MessageName.UNNAMED, `Strategy<${prettyStrategy}>: resolved count <${resolvedDedupedCount}>, unresolved count <${unresolvedDedupedCount}>`);
